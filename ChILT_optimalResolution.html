@@ -227,11 +227,14 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
     coord_fixed() + scale_color_brewer(palette=&quot;Set1&quot;) + theme_bw()</code></pre>
 <p><img src="ChILT_optimalResolution_files/figure-html/ROC-1.png" /><!-- --></p>
 <pre class="r"><code>for(i in colnames(pdata)){
-  cat(i)
+  cat(paste(&quot;###&quot;,i))
   tableTPFP(pdata[,i],model$y==1) %&gt;% arrange(-Jaccard) %&gt;%
   head(10) %&gt;% round(3) %&gt;% tablemd %&gt;% print
+  cat(fill=TRUE)
 }</code></pre>
-<p>Logistic regression</p>
+</div>
+<div id="logistic-regression" class="section level3">
+<h3>Logistic regression</h3>
 <table>
 <thead>
 <tr class="header">
@@ -359,7 +362,9 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
 </tr>
 </tbody>
 </table>
-<p>within 1kb from TSS</p>
+</div>
+<div id="within-1kb-from-tss" class="section level3">
+<h3>within 1kb from TSS</h3>
 <table>
 <thead>
 <tr class="header">
@@ -487,7 +492,9 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
 </tr>
 </tbody>
 </table>
-<p>within 2kb from TSS</p>
+</div>
+<div id="within-2kb-from-tss" class="section level3">
+<h3>within 2kb from TSS</h3>
 <table>
 <thead>
 <tr class="header">
@@ -615,7 +622,9 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
 </tr>
 </tbody>
 </table>
-<p>within 5kb from TSS</p>
+</div>
+<div id="within-5kb-from-tss" class="section level3">
+<h3>within 5kb from TSS</h3>
 <table>
 <thead>
 <tr class="header">
@@ -743,7 +752,9 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
 </tr>
 </tbody>
 </table>
-<p>2-5kb from TSS</p>
+</div>
+<div id="kb-from-tss" class="section level3">
+<h3>2-5kb from TSS</h3>
 <table>
 <thead>
 <tr class="header">

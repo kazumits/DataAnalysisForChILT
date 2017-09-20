@@ -161,13 +161,14 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
 
 ```r
 for(i in colnames(pdata)){
-  cat(i)
+  cat(paste("###",i))
   tableTPFP(pdata[,i],model$y==1) %>% arrange(-Jaccard) %>%
   head(10) %>% round(3) %>% tablemd %>% print
+  cat(fill=TRUE)
 }
 ```
 
-Logistic regression
+### Logistic regression
 
 | threshold|  FP|    TP|   FN|    TN|   TPR|   FPR|    YJ| Jaccard|
 |---------:|---:|-----:|----:|-----:|-----:|-----:|-----:|-------:|
@@ -181,7 +182,8 @@ Logistic regression
 |     0.440| 731| 12501| 1695| 12124| 0.881| 0.057| 0.824|   0.837|
 |     0.411| 798| 12557| 1639| 12057| 0.885| 0.062| 0.822|   0.837|
 |     0.415| 791| 12551| 1645| 12064| 0.884| 0.062| 0.823|   0.837|
-within 1kb from TSS
+
+### within 1kb from TSS
 
 | threshold|    FP|    TP|   FN|    TN|   TPR|   FPR|    YJ| Jaccard|
 |---------:|-----:|-----:|----:|-----:|-----:|-----:|-----:|-------:|
@@ -195,7 +197,8 @@ within 1kb from TSS
 |         7|     1|  5922| 8274| 12854| 0.417| 0.000| 0.417|   0.417|
 |         8|     0|  4996| 9200| 12855| 0.352| 0.000| 0.352|   0.352|
 |         9|     0|  4225| 9971| 12855| 0.298| 0.000| 0.298|   0.298|
-within 2kb from TSS
+
+### within 2kb from TSS
 
 | threshold|    FP|    TP|   FN|    TN|   TPR|   FPR|    YJ| Jaccard|
 |---------:|-----:|-----:|----:|-----:|-----:|-----:|-----:|-------:|
@@ -209,7 +212,8 @@ within 2kb from TSS
 |         0| 12855| 14196|    0|     0| 1.000| 1.000| 0.000|   0.525|
 |         8|    10|  6901| 7295| 12845| 0.486| 0.001| 0.485|   0.486|
 |         9|     7|  6152| 8044| 12848| 0.433| 0.001| 0.433|   0.433|
-within 5kb from TSS
+
+### within 5kb from TSS
 
 | threshold|    FP|    TP|   FN|    TN|   TPR|   FPR|    YJ| Jaccard|
 |---------:|-----:|-----:|----:|-----:|-----:|-----:|-----:|-------:|
@@ -223,7 +227,8 @@ within 5kb from TSS
 |         8|   186|  8205| 5991| 12669| 0.578| 0.014| 0.564|   0.571|
 |         0| 12855| 14196|    0|     0| 1.000| 1.000| 0.000|   0.525|
 |         9|   166|  7519| 6677| 12689| 0.530| 0.013| 0.517|   0.524|
-2-5kb from TSS
+
+### 2-5kb from TSS
 
 | threshold|    FP|    TP|    FN|    TN|   TPR|   FPR|    YJ| Jaccard|
 |---------:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-------:|

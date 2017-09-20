@@ -98,7 +98,7 @@ plotROCs(pdata, as.logical(model$y), pts=FALSE) +
 
 ```{r showTables, results="asis"}
 for(i in colnames(pdata)){
-  cat(paste("###",i))
+  cat(paste("####",i))
   tableTPFP(pdata[,i],model$y==1) %>% arrange(-Jaccard) %>%
   head(10) %>% round(3) %>% tablemd %>% print
   cat(fill=TRUE)

@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+
+
+<title>Optimal resolution of ChILT</title>
+
+<script src="ChILT_optimalResolution_files/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="ChILT_optimalResolution_files/bootstrap-3.3.5/css/united.min.css" rel="stylesheet" />
+<script src="ChILT_optimalResolution_files/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="ChILT_optimalResolution_files/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="ChILT_optimalResolution_files/bootstrap-3.3.5/shim/respond.min.js"></script>
+<script src="ChILT_optimalResolution_files/navigation-1.1/tabsets.js"></script>
+<link href="ChILT_optimalResolution_files/highlightjs-1.1/default.css" rel="stylesheet" />
+<script src="ChILT_optimalResolution_files/highlightjs-1.1/highlight.js"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+<style type="text/css">
+h1 {
+  font-size: 34px;
+}
+h1.title {
+  font-size: 38px;
+}
+h2 {
+  font-size: 30px;
+}
+h3 {
+  font-size: 24px;
+}
+h4 {
+  font-size: 18px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 12px;
+}
+.table th:not([align]) {
+  text-align: left;
+}
+</style>
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+
+
+<div class="fluid-row" id="header">
+
+
+
+<h1 class="title toc-ignore">Optimal resolution of ChILT</h1>
+<h3 class="subtitle"><em>by determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction</em></h3>
+
+</div>
+
+
+<div id="setup" class="section level3">
+<h3>Setup</h3>
+<pre class="r"><code>library(ggplot2)
+library(dplyr)
+library(data.table)
+library(dtplyr)
+library(Matrix)
+source(&quot;RScripts/myROC.R&quot;)
+gx &lt;- function(x,mu=0,sigma=20) dnorm(x-0.5,mu,sigma)
+tablemd &lt;- function(x,...) knitr::kable(x,format=&quot;markdown&quot;,...)</code></pre>
+<pre class="r"><code>print(sessionInfo(),locale=FALSE)</code></pre>
+<pre><code>## R version 3.3.2 (2016-10-31)
+## Platform: x86_64-pc-linux-gnu (64-bit)
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] Matrix_1.2-11     dtplyr_0.0.2      data.table_1.10.4 dplyr_0.7.3      
+## [5] ggplot2_2.2.1    
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.12     bindr_0.1        knitr_1.17       magrittr_1.5    
+##  [5] munsell_0.4.3    lattice_0.20-35  colorspace_1.3-2 R6_2.2.2        
+##  [9] rlang_0.1.2      stringr_1.2.0    plyr_1.8.4       tools_3.3.2     
+## [13] grid_3.3.2       gtable_0.2.0     htmltools_0.3.6  yaml_2.1.14     
+## [17] lazyeval_0.2.0   rprojroot_1.2    digest_0.6.12    assertthat_0.2.0
+## [21] tibble_1.3.4     bindrcpp_0.2     glue_1.1.1       evaluate_0.10.1 
+## [25] rmarkdown_1.6    stringi_1.1.5    scales_0.5.0     backports_1.1.0 
+## [29] pkgconfig_2.0.1</code></pre>
+</div>
+<div id="load-data" class="section level3">
+<h3>Load data</h3>
+<pre class="r"><code>wr &lt;- seq(-5000,5000)
+# Gaussian smoothing matrix
+G &lt;- drop0(t(sapply(wr,function(mu) gx(wr,mu,20))),1e-8)
+X &lt;- fread(&quot;zcat &lt; data/aggrTSS_H3K4me3-1_5cnt.txt.gz&quot;) %&gt;%
+  dplyr::select(-1) %&gt;% as.matrix %&gt;% Matrix</code></pre>
+<pre><code>## 
+Read 0.0% of 10001 rows
+Read 100.0% of 10001 rows
+Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:18</code></pre>
+<pre class="r"><code>Y &lt;- fread(&quot;zcat &lt; data/aggrTSS_ENCFF001IBG_5cnt.txt.gz&quot;) %&gt;%
+  dplyr::select(-1) %&gt;% as.matrix %&gt;% Matrix</code></pre>
+<pre><code>## 
+Read 0.0% of 10001 rows
+Read 100.0% of 10001 rows
+Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:20</code></pre>
+<pre class="r"><code>peak &lt;- fread(&quot;zcat &lt; data/ensembl_grcm38_refseqNM_uniqENST_coding_eH3K4me3PeakCountTSSwithin1000.txt.gz&quot;)</code></pre>
+</div>
+<div id="predict-chip-seq-peaks-by-chilt-signal-count-bins-at-tsss" class="section level3">
+<h3>Predict ChIP-seq peaks by ChILT signal count (bins at TSSs)</h3>
+<p>The model consists of</p>
+<ul>
+<li>Response: existence of peaks (0: absent, 1: present)</li>
+<li>Predictors: counts of bins around a TSS</li>
+</ul>
+<p>of all protein-coding genes.</p>
+<pre class="r"><code># 100 bins at TSS
+br &lt;- cut(seq(-5,5,by=0.001),100,include.lowest = TRUE,right = FALSE)
+Xb &lt;- simplify2array(by(as.matrix(X),br,colSums))</code></pre>
+<div id="inspect-correlations-of-bins" class="section level4">
+<h4>Inspect correlations of bins</h4>
+<pre class="r"><code>R &lt;- cor(Xb)
+diag(R) &lt;- NA
+reshape2::melt(R,value.name=&quot;correlation&quot;) %&gt;%
+  mutate_at(1:2, function(x) 100*(as.integer(x)-50)) %&gt;%
+  ggplot(aes(Var1,Var2,fill=correlation)) +
+  geom_raster() + coord_fixed() + 
+  scale_fill_distiller(palette=&quot;Greys&quot;,direction=1) +
+  theme_classic() + xlab(&quot;&quot;) + ylab(&quot;&quot;)</code></pre>
+<p><img src="ChILT_optimalResolution_files/figure-html/corr-1.png" /><!-- --></p>
+<pre class="r"><code>model &lt;- glm((peak$V7&gt;0)~Xb,family=binomial,control = list(maxit=100,trace = TRUE))</code></pre>
+<pre><code>## Deviance = 22995.72 Iterations - 1
+## Deviance = 18256.85 Iterations - 2
+## Deviance = 15293.07 Iterations - 3
+## Deviance = 13642.13 Iterations - 4
+## Deviance = 12999.54 Iterations - 5
+## Deviance = 12886.84 Iterations - 6
+## Deviance = 12882.89 Iterations - 7
+## Deviance = 12882.88 Iterations - 8
+## Deviance = 12882.88 Iterations - 9</code></pre>
+<pre><code>## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred</code></pre>
+<pre class="r"><code>xs &lt;- G%*%Matrix::rowSums(X)
+plot(seq(-5000,5000,len=100),coef(model)[-1],type=&quot;h&quot;,lwd=4,pch=20,
+     col=ifelse(summary(model)$coef[-1,4] &lt; 0.01,&quot;red&quot;,&quot;grey&quot;))
+lines(seq(-5000,5000),xs/max(xs)*max(coef(model)[-1]),lwd=2)
+abline(h=0,v=0,lty=2)</code></pre>
+<p><img src="ChILT_optimalResolution_files/figure-html/regression-1.png" /><!-- --></p>
+</div>
+</div>
+<div id="performances-of-each-bin-size" class="section level3">
+<h3>Performances of each bin-size</h3>
+<pre class="r"><code>pdata &lt;- cbind(
+  `Logistic regression` = predict(model,type = &quot;response&quot;),
+  `within 1kb from TSS` = Matrix::colSums(X[seq(-1000,1000)+5001,]),
+  `within 2kb from TSS` = Matrix::colSums(X[seq(-2000,2000)+5001,]),
+  `within 5kb from TSS` = Matrix::colSums(X[seq(-5000,5000)+5001,]),
+  `2-5kb from TSS` = Matrix::colSums(X[-c(seq(-2000,2000)+5001),])
+)
+  
+plotROCs(pdata, as.logical(model$y), pts=FALSE) +
+    geom_abline(colour=&quot;grey&quot;,linetype=2) +
+    coord_fixed() + scale_color_brewer(palette=&quot;Set1&quot;) + theme_bw()</code></pre>
+<p><img src="ChILT_optimalResolution_files/figure-html/ROC-1.png" /><!-- --></p>
+<pre class="r"><code>for(i in colnames(pdata)){
+  cat(i)
+  tableTPFP(pdata[,i],model$y==1) %&gt;% arrange(-Jaccard) %&gt;%
+  head(10) %&gt;% round(3) %&gt;% tablemd %&gt;% print
+}</code></pre>
+<p>Logistic regression</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">threshold</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">FN</th>
+<th align="right">TN</th>
+<th align="right">TPR</th>
+<th align="right">FPR</th>
+<th align="right">YJ</th>
+<th align="right">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0.415</td>
+<td align="right">791</td>
+<td align="right">12553</td>
+<td align="right">1643</td>
+<td align="right">12064</td>
+<td align="right">0.884</td>
+<td align="right">0.062</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="even">
+<td align="right">0.418</td>
+<td align="right">788</td>
+<td align="right">12550</td>
+<td align="right">1646</td>
+<td align="right">12067</td>
+<td align="right">0.884</td>
+<td align="right">0.061</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="odd">
+<td align="right">0.415</td>
+<td align="right">791</td>
+<td align="right">12552</td>
+<td align="right">1644</td>
+<td align="right">12064</td>
+<td align="right">0.884</td>
+<td align="right">0.062</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="even">
+<td align="right">0.417</td>
+<td align="right">790</td>
+<td align="right">12551</td>
+<td align="right">1645</td>
+<td align="right">12065</td>
+<td align="right">0.884</td>
+<td align="right">0.061</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="odd">
+<td align="right">0.414</td>
+<td align="right">796</td>
+<td align="right">12556</td>
+<td align="right">1640</td>
+<td align="right">12059</td>
+<td align="right">0.884</td>
+<td align="right">0.062</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="even">
+<td align="right">0.418</td>
+<td align="right">789</td>
+<td align="right">12550</td>
+<td align="right">1646</td>
+<td align="right">12066</td>
+<td align="right">0.884</td>
+<td align="right">0.061</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="odd">
+<td align="right">0.414</td>
+<td align="right">795</td>
+<td align="right">12555</td>
+<td align="right">1641</td>
+<td align="right">12060</td>
+<td align="right">0.884</td>
+<td align="right">0.062</td>
+<td align="right">0.823</td>
+<td align="right">0.838</td>
+</tr>
+<tr class="even">
+<td align="right">0.440</td>
+<td align="right">731</td>
+<td align="right">12501</td>
+<td align="right">1695</td>
+<td align="right">12124</td>
+<td align="right">0.881</td>
+<td align="right">0.057</td>
+<td align="right">0.824</td>
+<td align="right">0.837</td>
+</tr>
+<tr class="odd">
+<td align="right">0.411</td>
+<td align="right">798</td>
+<td align="right">12557</td>
+<td align="right">1639</td>
+<td align="right">12057</td>
+<td align="right">0.885</td>
+<td align="right">0.062</td>
+<td align="right">0.822</td>
+<td align="right">0.837</td>
+</tr>
+<tr class="even">
+<td align="right">0.415</td>
+<td align="right">791</td>
+<td align="right">12551</td>
+<td align="right">1645</td>
+<td align="right">12064</td>
+<td align="right">0.884</td>
+<td align="right">0.062</td>
+<td align="right">0.823</td>
+<td align="right">0.837</td>
+</tr>
+</tbody>
+</table>
+<p>within 1kb from TSS</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">threshold</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">FN</th>
+<th align="right">TN</th>
+<th align="right">TPR</th>
+<th align="right">FPR</th>
+<th align="right">YJ</th>
+<th align="right">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">1</td>
+<td align="right">1421</td>
+<td align="right">12765</td>
+<td align="right">1431</td>
+<td align="right">11434</td>
+<td align="right">0.899</td>
+<td align="right">0.111</td>
+<td align="right">0.789</td>
+<td align="right">0.817</td>
+</tr>
+<tr class="even">
+<td align="right">2</td>
+<td align="right">264</td>
+<td align="right">11589</td>
+<td align="right">2607</td>
+<td align="right">12591</td>
+<td align="right">0.816</td>
+<td align="right">0.021</td>
+<td align="right">0.796</td>
+<td align="right">0.801</td>
+</tr>
+<tr class="odd">
+<td align="right">3</td>
+<td align="right">58</td>
+<td align="right">10353</td>
+<td align="right">3843</td>
+<td align="right">12797</td>
+<td align="right">0.729</td>
+<td align="right">0.005</td>
+<td align="right">0.725</td>
+<td align="right">0.726</td>
+</tr>
+<tr class="even">
+<td align="right">4</td>
+<td align="right">22</td>
+<td align="right">9129</td>
+<td align="right">5067</td>
+<td align="right">12833</td>
+<td align="right">0.643</td>
+<td align="right">0.002</td>
+<td align="right">0.641</td>
+<td align="right">0.642</td>
+</tr>
+<tr class="odd">
+<td align="right">5</td>
+<td align="right">9</td>
+<td align="right">8002</td>
+<td align="right">6194</td>
+<td align="right">12846</td>
+<td align="right">0.564</td>
+<td align="right">0.001</td>
+<td align="right">0.563</td>
+<td align="right">0.563</td>
+</tr>
+<tr class="even">
+<td align="right">0</td>
+<td align="right">12855</td>
+<td align="right">14196</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1.000</td>
+<td align="right">1.000</td>
+<td align="right">0.000</td>
+<td align="right">0.525</td>
+</tr>
+<tr class="odd">
+<td align="right">6</td>
+<td align="right">3</td>
+<td align="right">6923</td>
+<td align="right">7273</td>
+<td align="right">12852</td>
+<td align="right">0.488</td>
+<td align="right">0.000</td>
+<td align="right">0.487</td>
+<td align="right">0.488</td>
+</tr>
+<tr class="even">
+<td align="right">7</td>
+<td align="right">1</td>
+<td align="right">5922</td>
+<td align="right">8274</td>
+<td align="right">12854</td>
+<td align="right">0.417</td>
+<td align="right">0.000</td>
+<td align="right">0.417</td>
+<td align="right">0.417</td>
+</tr>
+<tr class="odd">
+<td align="right">8</td>
+<td align="right">0</td>
+<td align="right">4996</td>
+<td align="right">9200</td>
+<td align="right">12855</td>
+<td align="right">0.352</td>
+<td align="right">0.000</td>
+<td align="right">0.352</td>
+<td align="right">0.352</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">0</td>
+<td align="right">4225</td>
+<td align="right">9971</td>
+<td align="right">12855</td>
+<td align="right">0.298</td>
+<td align="right">0.000</td>
+<td align="right">0.298</td>
+<td align="right">0.298</td>
+</tr>
+</tbody>
+</table>
+<p>within 2kb from TSS</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">threshold</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">FN</th>
+<th align="right">TN</th>
+<th align="right">TPR</th>
+<th align="right">FPR</th>
+<th align="right">YJ</th>
+<th align="right">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">682</td>
+<td align="right">12234</td>
+<td align="right">1962</td>
+<td align="right">12173</td>
+<td align="right">0.862</td>
+<td align="right">0.053</td>
+<td align="right">0.809</td>
+<td align="right">0.822</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">2572</td>
+<td align="right">13195</td>
+<td align="right">1001</td>
+<td align="right">10283</td>
+<td align="right">0.929</td>
+<td align="right">0.200</td>
+<td align="right">0.729</td>
+<td align="right">0.787</td>
+</tr>
+<tr class="odd">
+<td align="right">3</td>
+<td align="right">254</td>
+<td align="right">11257</td>
+<td align="right">2939</td>
+<td align="right">12601</td>
+<td align="right">0.793</td>
+<td align="right">0.020</td>
+<td align="right">0.773</td>
+<td align="right">0.779</td>
+</tr>
+<tr class="even">
+<td align="right">4</td>
+<td align="right">114</td>
+<td align="right">10267</td>
+<td align="right">3929</td>
+<td align="right">12741</td>
+<td align="right">0.723</td>
+<td align="right">0.009</td>
+<td align="right">0.714</td>
+<td align="right">0.717</td>
+</tr>
+<tr class="odd">
+<td align="right">5</td>
+<td align="right">54</td>
+<td align="right">9402</td>
+<td align="right">4794</td>
+<td align="right">12801</td>
+<td align="right">0.662</td>
+<td align="right">0.004</td>
+<td align="right">0.658</td>
+<td align="right">0.660</td>
+</tr>
+<tr class="even">
+<td align="right">6</td>
+<td align="right">32</td>
+<td align="right">8517</td>
+<td align="right">5679</td>
+<td align="right">12823</td>
+<td align="right">0.600</td>
+<td align="right">0.002</td>
+<td align="right">0.597</td>
+<td align="right">0.599</td>
+</tr>
+<tr class="odd">
+<td align="right">7</td>
+<td align="right">18</td>
+<td align="right">7696</td>
+<td align="right">6500</td>
+<td align="right">12837</td>
+<td align="right">0.542</td>
+<td align="right">0.001</td>
+<td align="right">0.541</td>
+<td align="right">0.541</td>
+</tr>
+<tr class="even">
+<td align="right">0</td>
+<td align="right">12855</td>
+<td align="right">14196</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1.000</td>
+<td align="right">1.000</td>
+<td align="right">0.000</td>
+<td align="right">0.525</td>
+</tr>
+<tr class="odd">
+<td align="right">8</td>
+<td align="right">10</td>
+<td align="right">6901</td>
+<td align="right">7295</td>
+<td align="right">12845</td>
+<td align="right">0.486</td>
+<td align="right">0.001</td>
+<td align="right">0.485</td>
+<td align="right">0.486</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">7</td>
+<td align="right">6152</td>
+<td align="right">8044</td>
+<td align="right">12848</td>
+<td align="right">0.433</td>
+<td align="right">0.001</td>
+<td align="right">0.433</td>
+<td align="right">0.433</td>
+</tr>
+</tbody>
+</table>
+<p>within 5kb from TSS</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">threshold</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">FN</th>
+<th align="right">TN</th>
+<th align="right">TPR</th>
+<th align="right">FPR</th>
+<th align="right">YJ</th>
+<th align="right">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">3</td>
+<td align="right">1093</td>
+<td align="right">12065</td>
+<td align="right">2131</td>
+<td align="right">11762</td>
+<td align="right">0.850</td>
+<td align="right">0.085</td>
+<td align="right">0.765</td>
+<td align="right">0.789</td>
+</tr>
+<tr class="even">
+<td align="right">2</td>
+<td align="right">2139</td>
+<td align="right">12816</td>
+<td align="right">1380</td>
+<td align="right">10716</td>
+<td align="right">0.903</td>
+<td align="right">0.166</td>
+<td align="right">0.736</td>
+<td align="right">0.785</td>
+</tr>
+<tr class="odd">
+<td align="right">4</td>
+<td align="right">622</td>
+<td align="right">11212</td>
+<td align="right">2984</td>
+<td align="right">12233</td>
+<td align="right">0.790</td>
+<td align="right">0.048</td>
+<td align="right">0.741</td>
+<td align="right">0.757</td>
+</tr>
+<tr class="even">
+<td align="right">5</td>
+<td align="right">403</td>
+<td align="right">10453</td>
+<td align="right">3743</td>
+<td align="right">12452</td>
+<td align="right">0.736</td>
+<td align="right">0.031</td>
+<td align="right">0.705</td>
+<td align="right">0.716</td>
+</tr>
+<tr class="odd">
+<td align="right">1</td>
+<td align="right">4918</td>
+<td align="right">13559</td>
+<td align="right">637</td>
+<td align="right">7937</td>
+<td align="right">0.955</td>
+<td align="right">0.383</td>
+<td align="right">0.573</td>
+<td align="right">0.709</td>
+</tr>
+<tr class="even">
+<td align="right">6</td>
+<td align="right">308</td>
+<td align="right">9657</td>
+<td align="right">4539</td>
+<td align="right">12547</td>
+<td align="right">0.680</td>
+<td align="right">0.024</td>
+<td align="right">0.656</td>
+<td align="right">0.666</td>
+</tr>
+<tr class="odd">
+<td align="right">7</td>
+<td align="right">234</td>
+<td align="right">8901</td>
+<td align="right">5295</td>
+<td align="right">12621</td>
+<td align="right">0.627</td>
+<td align="right">0.018</td>
+<td align="right">0.609</td>
+<td align="right">0.617</td>
+</tr>
+<tr class="even">
+<td align="right">8</td>
+<td align="right">186</td>
+<td align="right">8205</td>
+<td align="right">5991</td>
+<td align="right">12669</td>
+<td align="right">0.578</td>
+<td align="right">0.014</td>
+<td align="right">0.564</td>
+<td align="right">0.571</td>
+</tr>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">12855</td>
+<td align="right">14196</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1.000</td>
+<td align="right">1.000</td>
+<td align="right">0.000</td>
+<td align="right">0.525</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">166</td>
+<td align="right">7519</td>
+<td align="right">6677</td>
+<td align="right">12689</td>
+<td align="right">0.530</td>
+<td align="right">0.013</td>
+<td align="right">0.517</td>
+<td align="right">0.524</td>
+</tr>
+</tbody>
+</table>
+<p>2-5kb from TSS</p>
+<table>
+<thead>
+<tr class="header">
+<th align="right">threshold</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">FN</th>
+<th align="right">TN</th>
+<th align="right">TPR</th>
+<th align="right">FPR</th>
+<th align="right">YJ</th>
+<th align="right">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">1</td>
+<td align="right">3529</td>
+<td align="right">10399</td>
+<td align="right">3797</td>
+<td align="right">9326</td>
+<td align="right">0.733</td>
+<td align="right">0.275</td>
+<td align="right">0.458</td>
+<td align="right">0.587</td>
+</tr>
+<tr class="even">
+<td align="right">0</td>
+<td align="right">12855</td>
+<td align="right">14196</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1.000</td>
+<td align="right">1.000</td>
+<td align="right">0.000</td>
+<td align="right">0.525</td>
+</tr>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">1259</td>
+<td align="right">6980</td>
+<td align="right">7216</td>
+<td align="right">11596</td>
+<td align="right">0.492</td>
+<td align="right">0.098</td>
+<td align="right">0.394</td>
+<td align="right">0.452</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">607</td>
+<td align="right">4593</td>
+<td align="right">9603</td>
+<td align="right">12248</td>
+<td align="right">0.324</td>
+<td align="right">0.047</td>
+<td align="right">0.276</td>
+<td align="right">0.310</td>
+</tr>
+<tr class="odd">
+<td align="right">4</td>
+<td align="right">370</td>
+<td align="right">3113</td>
+<td align="right">11083</td>
+<td align="right">12485</td>
+<td align="right">0.219</td>
+<td align="right">0.029</td>
+<td align="right">0.191</td>
+<td align="right">0.214</td>
+</tr>
+<tr class="even">
+<td align="right">5</td>
+<td align="right">262</td>
+<td align="right">2164</td>
+<td align="right">12032</td>
+<td align="right">12593</td>
+<td align="right">0.152</td>
+<td align="right">0.020</td>
+<td align="right">0.132</td>
+<td align="right">0.150</td>
+</tr>
+<tr class="odd">
+<td align="right">6</td>
+<td align="right">212</td>
+<td align="right">1596</td>
+<td align="right">12600</td>
+<td align="right">12643</td>
+<td align="right">0.112</td>
+<td align="right">0.016</td>
+<td align="right">0.096</td>
+<td align="right">0.111</td>
+</tr>
+<tr class="even">
+<td align="right">7</td>
+<td align="right">166</td>
+<td align="right">1191</td>
+<td align="right">13005</td>
+<td align="right">12689</td>
+<td align="right">0.084</td>
+<td align="right">0.013</td>
+<td align="right">0.071</td>
+<td align="right">0.083</td>
+</tr>
+<tr class="odd">
+<td align="right">8</td>
+<td align="right">139</td>
+<td align="right">928</td>
+<td align="right">13268</td>
+<td align="right">12716</td>
+<td align="right">0.065</td>
+<td align="right">0.011</td>
+<td align="right">0.055</td>
+<td align="right">0.065</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">121</td>
+<td align="right">742</td>
+<td align="right">13454</td>
+<td align="right">12734</td>
+<td align="right">0.052</td>
+<td align="right">0.009</td>
+<td align="right">0.043</td>
+<td align="right">0.052</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

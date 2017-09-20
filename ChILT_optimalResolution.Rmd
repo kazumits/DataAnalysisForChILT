@@ -1,0 +1,106 @@
+---
+title: "Optimal resolution of ChILT"
+subtitle: by determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction
+output:
+  html_document: 
+    keep_md: yes
+    self_contained: no
+    theme: united
+  pdf_document:
+    keep_tex: yes
+    latex_engine: lualatex
+  html_notebook: default
+---
+
+### Setup
+
+```{r prereq, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(data.table)
+library(dtplyr)
+library(Matrix)
+source("RScripts/myROC.R")
+gx <- function(x,mu=0,sigma=20) dnorm(x-0.5,mu,sigma)
+tablemd <- function(x,...) knitr::kable(x,format="markdown",...)
+```
+
+```{r sessionInfo}
+print(sessionInfo(),locale=FALSE)
+```
+
+### Load data
+
+```{r loadData, cache=TRUE}
+wr <- seq(-5000,5000)
+# Gaussian smoothing matrix
+G <- drop0(t(sapply(wr,function(mu) gx(wr,mu,20))),1e-8)
+X <- fread("zcat < data/aggrTSS_H3K4me3-1_5cnt.txt.gz") %>%
+  dplyr::select(-1) %>% as.matrix %>% Matrix
+Y <- fread("zcat < data/aggrTSS_ENCFF001IBG_5cnt.txt.gz") %>%
+  dplyr::select(-1) %>% as.matrix %>% Matrix
+peak <- fread("zcat < data/ensembl_grcm38_refseqNM_uniqENST_coding_eH3K4me3PeakCountTSSwithin1000.txt.gz")
+```
+
+### Predict ChIP-seq peaks by ChILT signal count (bins at TSSs)
+
+The model consists of
+
+* Response: existence of peaks (0: absent, 1: present)
+* Predictors: counts of bins around a TSS
+
+of all protein-coding genes.
+
+```{r prepareData, cache=TRUE}
+# 100 bins at TSS
+br <- cut(seq(-5,5,by=0.001),100,include.lowest = TRUE,right = FALSE)
+Xb <- simplify2array(by(as.matrix(X),br,colSums))
+```
+
+#### Inspect correlations of bins
+
+```{r corr}
+R <- cor(Xb)
+diag(R) <- NA
+reshape2::melt(R,value.name="correlation") %>%
+  mutate_at(1:2, function(x) 100*(as.integer(x)-50)) %>%
+  ggplot(aes(Var1,Var2,fill=correlation)) +
+  geom_raster() + coord_fixed() + 
+  scale_fill_distiller(palette="Greys",direction=1) +
+  theme_classic() + xlab("") + ylab("")
+```
+
+
+```{r regression}
+model <- glm((peak$V7>0)~Xb,family=binomial,control = list(maxit=100,trace = TRUE))
+xs <- G%*%Matrix::rowSums(X)
+plot(seq(-5000,5000,len=100),coef(model)[-1],type="h",lwd=4,pch=20,
+     col=ifelse(summary(model)$coef[-1,4] < 0.01,"red","grey"))
+lines(seq(-5000,5000),xs/max(xs)*max(coef(model)[-1]),lwd=2)
+abline(h=0,v=0,lty=2)
+```
+
+### Performances of each bin-size
+
+```{r ROC, fig.width=6,fig.height=4}
+pdata <- cbind(
+  `Logistic regression` = predict(model,type = "response"),
+  `within 1kb from TSS` = Matrix::colSums(X[seq(-1000,1000)+5001,]),
+  `within 2kb from TSS` = Matrix::colSums(X[seq(-2000,2000)+5001,]),
+  `within 5kb from TSS` = Matrix::colSums(X[seq(-5000,5000)+5001,]),
+  `2-5kb from TSS` = Matrix::colSums(X[-c(seq(-2000,2000)+5001),])
+)
+  
+plotROCs(pdata, as.logical(model$y), pts=FALSE) +
+    geom_abline(colour="grey",linetype=2) +
+    coord_fixed() + scale_color_brewer(palette="Set1") + theme_bw()
+```
+
+```{r showTables, results="asis"}
+for(i in colnames(pdata)){
+  cat(i)
+  tableTPFP(pdata[,i],model$y==1) %>% arrange(-Jaccard) %>%
+  head(10) %>% round(3) %>% tablemd %>% print
+}
+```
+

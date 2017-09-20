@@ -1,0 +1,163 @@
+---
+title: "Sensitivity and Specificity of ChILT"
+subtitle: prediction of ENCODE C2C12 H3K4me3 peaks (ENCSR000AHO) from ChILT-H3K4me3(#3)
+output:
+  html_document:
+    keep_md: yes
+    self_contained: no
+    theme: united
+  html_notebook: 
+    theme: united
+  pdf_document:
+    keep_tex: yes
+    latex_engine: lualatex
+---
+
+### Setup
+
+```{r setup, message=FALSE}
+library(dplyr)
+library(data.table)
+library(dtplyr)
+library(ggplot2)
+source("RScripts/geomNorm.R")
+source("RScripts/myROC.R")
+
+# X: data_frame, bs: bin size
+binning <- function(X,bs)
+  X %>% as_tibble %>% 
+    mutate(bin=floor(start/bs)) %>% group_by(chr,bin) %>%
+    mutate(start=as.integer(min(start)),end=as.integer(max(end))) %>%
+    group_by(chr,start,end) %>% dplyr::select(-bin) %>%
+    summarise_all(sum) %>% ungroup
+
+# Poisson p with pseudo-count: P(X>=x)
+ppwp <- function(x,a=0) ppois(x+a-1,mean(x+a),lower.tail=FALSE,log.p=TRUE)
+
+tableCP <- function(x,a=0) 
+  data_frame(count=x) %>%
+  mutate(
+    nlog10p.pois = -ppwp(count,a)/log(10)
+  ) %>% mutate(
+    p.pois.adj = p.adjust(10^-nlog10p.pois,method="BH")
+  ) %>% arrange(count) %>% distinct
+
+tablemd <- function(x,...) knitr::kable(x,format="markdown",...)
+```
+
+```{r sessionInfo}
+print(sessionInfo(),locale=FALSE)
+```
+
+### Load data
+
+```{r loadData, cache=TRUE}
+X <- fread(
+  "zcat < data/counts1k_goldset.txt.gz",
+  colClasses = c("character",rep("integer",20))
+)
+colnames(X) <- sub("\\.bam$","",gsub("['#]","",colnames(X)))
+colnames(X)[4:9] <- c("eH3K27me3","eH3K27me3Input","rH3K27ac","rH3K27acInput","eH3K4me3","eH3K4me3Input")
+X <- X %>% filter(chr %in% 1:19)
+```
+
+```{r joinPeaks, cache=TRUE}
+peak <- fread(
+  "zcat < data/eOverlapCount_eH3K4me3.txt.gz",
+  colClasses = c("character",rep("integer",3))
+)
+colnames(peak) <- c("chr","start","end","npeak")
+peak <- peak %>% filter(chr %in% 1:19)
+X <- bind_cols(X,npeak=peak$npeak)
+```
+
+### Binning and calculate stats
+
+```{r calcStats, cache=TRUE}
+bs <- 4000
+target <- "H3K4me3-1"
+Xb <- X %>% binning(bs)
+Xg <- gscale(dplyr::select(Xb,4:9)+1)
+Xb <- bind_cols(Xb,
+    log2FC_H3K4me3 = log2(Xg[,"eH3K4me3"]+1)-log2(Xg[,"eH3K4me3Input"]+1),
+    log2FC_H3K27ac = log2(Xg[,"rH3K27ac"]+1)-log2(Xg[,"rH3K27acInput"]+1),
+    log2FC_H3K27me3 = log2(Xg[,"eH3K27me3"]+1)-log2(Xg[,"eH3K27me3Input"]+1),
+    nlog10p = -ppois(Xg[,"eH3K4me3"],Xg[,"eH3K4me3Input"]+1,lower.tail=FALSE,log.p=TRUE)/log(10)
+)
+```
+
+### Showing overall performance
+
+```{r showROCs}
+Xs <- dplyr::select(Xb,
+  `H3K4me3-1`, `H3K4me3-m1`,
+  `H3K27ac-1`, `H3K27ac-2`,
+  `H3K27me3-1`,`H3K27me3-m1`,
+  starts_with("log2FC"), nlog10p
+)
+
+plotROCs(Xs, Xb$npeak > 0, pts=FALSE) +
+  coord_fixed() + scale_color_brewer(palette="Paired")
+```
+
+### Optimal balance of sensitivity and specificity
+
+```{r byThresh, fig.width=4, fig.height=3}
+roc <- tableTPFP(pull(Xb,target),Xb$npeak>0) 
+
+roc.long <- roc %>% 
+  filter(threshold > 0 & threshold <= 10) %>%
+  mutate(Sensitivity=TPR, Specificity=1-FPR) %>% 
+  melt(
+    id = "threshold",
+    measure = c("Sensitivity", "Specificity", "Jaccard")
+  )
+
+ggplot(roc.long,aes(threshold,value,colour=variable)) +
+  geom_line() + geom_point() + theme_classic() +
+  scale_x_continuous(breaks = c(1,5,10)) +
+  scale_y_continuous(breaks = seq(0,1,0.5)) +
+  scale_color_brewer(palette="Set1") +
+  xlab(expression(Threshold: count >= x)) + ylab("")
+```
+
+```{r showTables}
+# Corresponding Poisson P-values
+pull(Xb,target) %>% tableCP %>% head(10) %>% round(3) %>% tablemd
+# TPR, FPR and other similarity measures
+roc %>% arrange(threshold) %>% head(10) %>% round(3) %>% tablemd
+```
+
+
+### Investigate neighbors of TPs
+
+```{r neibours}
+optThresh <- with(roc,threshold[which.max(Jaccard)])
+v <- labelTPFP(pull(Xb,target)>=optThresh,Xb$npeak > 0)
+table(left=v[-length(v)],right=v[-1]) %>% addmargins %>% tablemd
+# for triplets
+table(
+  left   = v[-c(length(v)-1,length(v))],
+  center = v[-c(1,length(v))],
+  right  = v[-c(1,2)]
+) %>% ftable
+```
+
+### Output ChILT-peaks with labels (TP,FP,FN) in BED format
+
+```{r writeBED}
+bpal <- c("0,0,0","255,255,0","255,0,0","0,0,255")
+
+A <- Xb %>% transmute(
+    chr, start, end, name=labelTPFP(`H3K4me3-1`>=optThresh,npeak>0),
+    score=`H3K4me3-1`, strand="."
+  ) %>% filter(name!="TN") %>% 
+  mutate(tstart=start, tend=end, itemRGB=bpal[name])
+
+write.table(A, file="chiltpeaks.bed",
+  quote=FALSE, sep="\t", row.names=FALSE, col.names = FALSE)
+```
+
+
+
+

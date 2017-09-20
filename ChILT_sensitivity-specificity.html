@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+
+
+<title>Sensitivity and Specificity of ChILT</title>
+
+<script src="ChILT_sensitivity-specificity_files/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="ChILT_sensitivity-specificity_files/bootstrap-3.3.5/css/united.min.css" rel="stylesheet" />
+<script src="ChILT_sensitivity-specificity_files/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="ChILT_sensitivity-specificity_files/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="ChILT_sensitivity-specificity_files/bootstrap-3.3.5/shim/respond.min.js"></script>
+<script src="ChILT_sensitivity-specificity_files/navigation-1.1/tabsets.js"></script>
+<link href="ChILT_sensitivity-specificity_files/highlightjs-1.1/default.css" rel="stylesheet" />
+<script src="ChILT_sensitivity-specificity_files/highlightjs-1.1/highlight.js"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+<style type="text/css">
+h1 {
+  font-size: 34px;
+}
+h1.title {
+  font-size: 38px;
+}
+h2 {
+  font-size: 30px;
+}
+h3 {
+  font-size: 24px;
+}
+h4 {
+  font-size: 18px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 12px;
+}
+.table th:not([align]) {
+  text-align: left;
+}
+</style>
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+
+
+<div class="fluid-row" id="header">
+
+
+
+<h1 class="title toc-ignore">Sensitivity and Specificity of ChILT</h1>
+<h3 class="subtitle"><em>prediction of ENCODE C2C12 H3K4me3 peaks (ENCSR000AHO) from ChILT-H3K4me3(#3)</em></h3>
+
+</div>
+
+
+<div id="setup" class="section level3">
+<h3>Setup</h3>
+<pre class="r"><code>library(dplyr)
+library(data.table)
+library(dtplyr)
+library(ggplot2)
+source(&quot;RScripts/geomNorm.R&quot;)
+source(&quot;RScripts/myROC.R&quot;)
+
+# X: data_frame, bs: bin size
+binning &lt;- function(X,bs)
+  X %&gt;% as_tibble %&gt;% 
+    mutate(bin=floor(start/bs)) %&gt;% group_by(chr,bin) %&gt;%
+    mutate(start=as.integer(min(start)),end=as.integer(max(end))) %&gt;%
+    group_by(chr,start,end) %&gt;% dplyr::select(-bin) %&gt;%
+    summarise_all(sum) %&gt;% ungroup
+
+# Poisson p with pseudo-count: P(X&gt;=x)
+ppwp &lt;- function(x,a=0) ppois(x+a-1,mean(x+a),lower.tail=FALSE,log.p=TRUE)
+
+tableCP &lt;- function(x,a=0) 
+  data_frame(count=x) %&gt;%
+  mutate(
+    nlog10p.pois = -ppwp(count,a)/log(10)
+  ) %&gt;% mutate(
+    p.pois.adj = p.adjust(10^-nlog10p.pois,method=&quot;BH&quot;)
+  ) %&gt;% arrange(count) %&gt;% distinct
+
+tablemd &lt;- function(x,...) knitr::kable(x,format=&quot;markdown&quot;,...)</code></pre>
+<pre class="r"><code>print(sessionInfo(),locale=FALSE)</code></pre>
+<pre><code>## R version 3.3.2 (2016-10-31)
+## Platform: x86_64-pc-linux-gnu (64-bit)
+## 
+## attached base packages:
+## [1] stats     graphics  grDevices utils     datasets  methods   base     
+## 
+## other attached packages:
+## [1] ggplot2_2.2.1     dtplyr_0.0.2      data.table_1.10.4 dplyr_0.7.3      
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.12     knitr_1.17       bindr_0.1        magrittr_1.5    
+##  [5] munsell_0.4.3    colorspace_1.3-2 R6_2.2.2         rlang_0.1.2     
+##  [9] plyr_1.8.4       stringr_1.2.0    tools_3.3.2      grid_3.3.2      
+## [13] gtable_0.2.0     htmltools_0.3.6  lazyeval_0.2.0   yaml_2.1.14     
+## [17] assertthat_0.2.0 rprojroot_1.2    digest_0.6.12    tibble_1.3.4    
+## [21] bindrcpp_0.2     glue_1.1.1       evaluate_0.10.1  rmarkdown_1.6   
+## [25] stringi_1.1.5    scales_0.5.0     backports_1.1.0  pkgconfig_2.0.1</code></pre>
+</div>
+<div id="load-data" class="section level3">
+<h3>Load data</h3>
+<pre class="r"><code>X &lt;- fread(
+  &quot;zcat &lt; data/counts1k_goldset.txt.gz&quot;,
+  colClasses = c(&quot;character&quot;,rep(&quot;integer&quot;,20))
+)</code></pre>
+<pre><code>## 
+Read 44.3% of 2730631 rows
+Read 80.2% of 2730631 rows
+Read 2730631 rows and 21 (of 21) columns from 0.238 GB file in 00:00:04</code></pre>
+<pre class="r"><code>colnames(X) &lt;- sub(&quot;\\.bam$&quot;,&quot;&quot;,gsub(&quot;[&#39;#]&quot;,&quot;&quot;,colnames(X)))
+colnames(X)[4:9] &lt;- c(&quot;eH3K27me3&quot;,&quot;eH3K27me3Input&quot;,&quot;rH3K27ac&quot;,&quot;rH3K27acInput&quot;,&quot;eH3K4me3&quot;,&quot;eH3K4me3Input&quot;)
+X &lt;- X %&gt;% filter(chr %in% 1:19)</code></pre>
+<pre class="r"><code>peak &lt;- fread(
+  &quot;zcat &lt; data/eOverlapCount_eH3K4me3.txt.gz&quot;,
+  colClasses = c(&quot;character&quot;,rep(&quot;integer&quot;,3))
+)
+colnames(peak) &lt;- c(&quot;chr&quot;,&quot;start&quot;,&quot;end&quot;,&quot;npeak&quot;)
+peak &lt;- peak %&gt;% filter(chr %in% 1:19)
+X &lt;- bind_cols(X,npeak=peak$npeak)</code></pre>
+</div>
+<div id="binning-and-calculate-stats" class="section level3">
+<h3>Binning and calculate stats</h3>
+<pre class="r"><code>bs &lt;- 4000
+target &lt;- &quot;H3K4me3-1&quot;
+Xb &lt;- X %&gt;% binning(bs)
+Xg &lt;- gscale(dplyr::select(Xb,4:9)+1)
+Xb &lt;- bind_cols(Xb,
+    log2FC_H3K4me3 = log2(Xg[,&quot;eH3K4me3&quot;]+1)-log2(Xg[,&quot;eH3K4me3Input&quot;]+1),
+    log2FC_H3K27ac = log2(Xg[,&quot;rH3K27ac&quot;]+1)-log2(Xg[,&quot;rH3K27acInput&quot;]+1),
+    log2FC_H3K27me3 = log2(Xg[,&quot;eH3K27me3&quot;]+1)-log2(Xg[,&quot;eH3K27me3Input&quot;]+1),
+    nlog10p = -ppois(Xg[,&quot;eH3K4me3&quot;],Xg[,&quot;eH3K4me3Input&quot;]+1,lower.tail=FALSE,log.p=TRUE)/log(10)
+)</code></pre>
+</div>
+<div id="showing-overall-performance" class="section level3">
+<h3>Showing overall performance</h3>
+<pre class="r"><code>Xs &lt;- dplyr::select(Xb,
+  `H3K4me3-1`, `H3K4me3-m1`,
+  `H3K27ac-1`, `H3K27ac-2`,
+  `H3K27me3-1`,`H3K27me3-m1`,
+  starts_with(&quot;log2FC&quot;), nlog10p
+)
+
+plotROCs(Xs, Xb$npeak &gt; 0, pts=FALSE) +
+  coord_fixed() + scale_color_brewer(palette=&quot;Paired&quot;)</code></pre>
+<p><img src="ChILT_sensitivity-specificity_files/figure-html/showROCs-1.png" /><!-- --></p>
+</div>
+<div id="optimal-balance-of-sensitivity-and-specificity" class="section level3">
+<h3>Optimal balance of sensitivity and specificity</h3>
+<pre class="r"><code>roc &lt;- tableTPFP(pull(Xb,target),Xb$npeak&gt;0) 
+
+roc.long &lt;- roc %&gt;% 
+  filter(threshold &gt; 0 &amp; threshold &lt;= 10) %&gt;%
+  mutate(Sensitivity=TPR, Specificity=1-FPR) %&gt;% 
+  melt(
+    id = &quot;threshold&quot;,
+    measure = c(&quot;Sensitivity&quot;, &quot;Specificity&quot;, &quot;Jaccard&quot;)
+  )
+
+ggplot(roc.long,aes(threshold,value,colour=variable)) +
+  geom_line() + geom_point() + theme_classic() +
+  scale_x_continuous(breaks = c(1,5,10)) +
+  scale_y_continuous(breaks = seq(0,1,0.5)) +
+  scale_color_brewer(palette=&quot;Set1&quot;) +
+  xlab(expression(Threshold: count &gt;= x)) + ylab(&quot;&quot;)</code></pre>
+<p><img src="ChILT_sensitivity-specificity_files/figure-html/byThresh-1.png" /><!-- --></p>
+<pre class="r"><code># Corresponding Poisson P-values
+pull(Xb,target) %&gt;% tableCP %&gt;% head(10) %&gt;% round(3) %&gt;% tablemd</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="right">count</th>
+<th align="right">nlog10p.pois</th>
+<th align="right">p.pois.adj</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">0.000</td>
+<td align="right">1.000</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">0.515</td>
+<td align="right">1.000</td>
+</tr>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">1.281</td>
+<td align="right">0.961</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">2.209</td>
+<td align="right">0.230</td>
+</tr>
+<tr class="odd">
+<td align="right">4</td>
+<td align="right">3.257</td>
+<td align="right">0.031</td>
+</tr>
+<tr class="even">
+<td align="right">5</td>
+<td align="right">4.399</td>
+<td align="right">0.003</td>
+</tr>
+<tr class="odd">
+<td align="right">6</td>
+<td align="right">5.619</td>
+<td align="right">0.000</td>
+</tr>
+<tr class="even">
+<td align="right">7</td>
+<td align="right">6.905</td>
+<td align="right">0.000</td>
+</tr>
+<tr class="odd">
+<td align="right">8</td>
+<td align="right">8.248</td>
+<td align="right">0.000</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">9.642</td>
+<td align="right">0.000</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code># TPR, FPR and other similarity measures
+roc %&gt;% arrange(threshold) %&gt;% head(10) %&gt;% round(3) %&gt;% tablemd</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="right">threshold</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">FN</th>
+<th align="right">TN</th>
+<th align="right">TPR</th>
+<th align="right">FPR</th>
+<th align="right">YJ</th>
+<th align="right">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">600296</td>
+<td align="right">15392</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td align="right">1.000</td>
+<td align="right">1.000</td>
+<td align="right">0.000</td>
+<td align="right">0.025</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">88088</td>
+<td align="right">13548</td>
+<td align="right">1844</td>
+<td align="right">512208</td>
+<td align="right">0.880</td>
+<td align="right">0.147</td>
+<td align="right">0.733</td>
+<td align="right">0.131</td>
+</tr>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">21750</td>
+<td align="right">11836</td>
+<td align="right">3556</td>
+<td align="right">578546</td>
+<td align="right">0.769</td>
+<td align="right">0.036</td>
+<td align="right">0.733</td>
+<td align="right">0.319</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">6248</td>
+<td align="right">10322</td>
+<td align="right">5070</td>
+<td align="right">594048</td>
+<td align="right">0.671</td>
+<td align="right">0.010</td>
+<td align="right">0.660</td>
+<td align="right">0.477</td>
+</tr>
+<tr class="odd">
+<td align="right">4</td>
+<td align="right">2181</td>
+<td align="right">8939</td>
+<td align="right">6453</td>
+<td align="right">598115</td>
+<td align="right">0.581</td>
+<td align="right">0.004</td>
+<td align="right">0.577</td>
+<td align="right">0.509</td>
+</tr>
+<tr class="even">
+<td align="right">5</td>
+<td align="right">862</td>
+<td align="right">7784</td>
+<td align="right">7608</td>
+<td align="right">599434</td>
+<td align="right">0.506</td>
+<td align="right">0.001</td>
+<td align="right">0.504</td>
+<td align="right">0.479</td>
+</tr>
+<tr class="odd">
+<td align="right">6</td>
+<td align="right">363</td>
+<td align="right">6767</td>
+<td align="right">8625</td>
+<td align="right">599933</td>
+<td align="right">0.440</td>
+<td align="right">0.001</td>
+<td align="right">0.439</td>
+<td align="right">0.430</td>
+</tr>
+<tr class="even">
+<td align="right">7</td>
+<td align="right">172</td>
+<td align="right">5866</td>
+<td align="right">9526</td>
+<td align="right">600124</td>
+<td align="right">0.381</td>
+<td align="right">0.000</td>
+<td align="right">0.381</td>
+<td align="right">0.377</td>
+</tr>
+<tr class="odd">
+<td align="right">8</td>
+<td align="right">85</td>
+<td align="right">5049</td>
+<td align="right">10343</td>
+<td align="right">600211</td>
+<td align="right">0.328</td>
+<td align="right">0.000</td>
+<td align="right">0.328</td>
+<td align="right">0.326</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">49</td>
+<td align="right">4408</td>
+<td align="right">10984</td>
+<td align="right">600247</td>
+<td align="right">0.286</td>
+<td align="right">0.000</td>
+<td align="right">0.286</td>
+<td align="right">0.285</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="investigate-neighbors-of-tps" class="section level3">
+<h3>Investigate neighbors of TPs</h3>
+<pre class="r"><code>optThresh &lt;- with(roc,threshold[which.max(Jaccard)])
+v &lt;- labelTPFP(pull(Xb,target)&gt;=optThresh,Xb$npeak &gt; 0)
+table(left=v[-length(v)],right=v[-1]) %&gt;% addmargins %&gt;% tablemd</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left"></th>
+<th align="right">TN</th>
+<th align="right">FN</th>
+<th align="right">FP</th>
+<th align="right">TP</th>
+<th align="right">Sum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">TN</td>
+<td align="right">586512</td>
+<td align="right">4420</td>
+<td align="right">1617</td>
+<td align="right">5565</td>
+<td align="right">598114</td>
+</tr>
+<tr class="even">
+<td align="left">FN</td>
+<td align="right">4434</td>
+<td align="right">1033</td>
+<td align="right">62</td>
+<td align="right">924</td>
+<td align="right">6453</td>
+</tr>
+<tr class="odd">
+<td align="left">FP</td>
+<td align="right">1629</td>
+<td align="right">60</td>
+<td align="right">86</td>
+<td align="right">406</td>
+<td align="right">2181</td>
+</tr>
+<tr class="even">
+<td align="left">TP</td>
+<td align="right">5539</td>
+<td align="right">940</td>
+<td align="right">416</td>
+<td align="right">2044</td>
+<td align="right">8939</td>
+</tr>
+<tr class="odd">
+<td align="left">Sum</td>
+<td align="right">598114</td>
+<td align="right">6453</td>
+<td align="right">2181</td>
+<td align="right">8939</td>
+<td align="right">615687</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code># for triplets
+table(
+  left   = v[-c(length(v)-1,length(v))],
+  center = v[-c(1,length(v))],
+  right  = v[-c(1,2)]
+) %&gt;% ftable</code></pre>
+<pre><code>##             right     TN     FN     FP     TP
+## left center                                  
+## TN   TN           575740   4200   1414   5157
+##      FN             2651    943     25    801
+##      FP             1182     46     55    334
+##      TP             2966    780    227   1592
+## FN   TN             4211     92     36     95
+##      FN              934     47      6     46
+##      FP               50      2      3      7
+##      TP              760     40     34     90
+## FP   TN             1448     24     43    114
+##      FN               27      9      1     23
+##      FP               46      2      6     32
+##      TP              219     34     27    126
+## TP   TN             5112    104    124    199
+##      FN              822     34     30     54
+##      FP              351     10     22     33
+##      TP             1594     86    128    236</code></pre>
+</div>
+<div id="output-chilt-peaks-with-labels-tpfpfn-in-bed-format" class="section level3">
+<h3>Output ChILT-peaks with labels (TP,FP,FN) in BED format</h3>
+<pre class="r"><code>bpal &lt;- c(&quot;0,0,0&quot;,&quot;255,255,0&quot;,&quot;255,0,0&quot;,&quot;0,0,255&quot;)
+
+A &lt;- Xb %&gt;% transmute(
+    chr, start, end, name=labelTPFP(`H3K4me3-1`&gt;=optThresh,npeak&gt;0),
+    score=`H3K4me3-1`, strand=&quot;.&quot;
+  ) %&gt;% filter(name!=&quot;TN&quot;) %&gt;% 
+  mutate(tstart=start, tend=end, itemRGB=bpal[name])
+
+write.table(A, file=&quot;chiltpeaks.bed&quot;,
+  quote=FALSE, sep=&quot;\t&quot;, row.names=FALSE, col.names = FALSE)</code></pre>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

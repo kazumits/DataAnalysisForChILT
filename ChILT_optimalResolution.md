@@ -1,5 +1,7 @@
 # Optimal resolution of ChILT
 
+*by determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction*
+
 ### Setup
 
 
@@ -56,19 +58,7 @@ X <- fread("zcat < data/aggrTSS_H3K4me3-1_5cnt.txt.gz") %>%
 ## 
 Read 0.0% of 10001 rows
 Read 100.0% of 10001 rows
-Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:18
-```
-
-```r
-Y <- fread("zcat < data/aggrTSS_ENCFF001IBG_5cnt.txt.gz") %>%
-  dplyr::select(-1) %>% as.matrix %>% Matrix
-```
-
-```
-## 
-Read 0.0% of 10001 rows
-Read 100.0% of 10001 rows
-Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:20
+Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:17
 ```
 
 ```r

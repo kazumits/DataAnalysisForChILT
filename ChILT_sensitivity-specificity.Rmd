@@ -1,6 +1,5 @@
 ---
 title: "Sensitivity and Specificity of ChILT"
-subtitle: prediction of ENCODE C2C12 H3K4me3 peaks (ENCSR000AHO) from ChILT-H3K4me3(#3)
 output:
   html_document:
     keep_md: yes
@@ -12,6 +11,8 @@ output:
     keep_tex: yes
     latex_engine: lualatex
 ---
+
+*prediction of ENCODE C2C12 H3K4me3 peaks (ENCSR000AHO) from ChILT-H3K4me3(#3)*
 
 ### Setup
 

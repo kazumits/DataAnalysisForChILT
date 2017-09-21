@@ -1,7 +1,6 @@
 ---
-title: "Optimal resolution of ChILT"
-subtitle: by determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction
-output:
+title: "Optimal resolution for ChILT"
+outpu:
   html_document: 
     keep_md: yes
     self_contained: no
@@ -11,6 +10,8 @@ output:
     latex_engine: lualatex
   html_notebook: default
 ---
+
+*determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction*
 
 ### Setup
 
@@ -37,17 +38,15 @@ wr <- seq(-5000,5000)
 G <- drop0(t(sapply(wr,function(mu) gx(wr,mu,20))),1e-8)
 X <- fread("zcat < data/aggrTSS_H3K4me3-1_5cnt.txt.gz") %>%
   dplyr::select(-1) %>% as.matrix %>% Matrix
-Y <- fread("zcat < data/aggrTSS_ENCFF001IBG_5cnt.txt.gz") %>%
-  dplyr::select(-1) %>% as.matrix %>% Matrix
 peak <- fread("zcat < data/ensembl_grcm38_refseqNM_uniqENST_coding_eH3K4me3PeakCountTSSwithin1000.txt.gz")
 ```
 
-### Predict ChIP-seq peaks by ChILT signal count (bins at TSSs)
+### Predicting ChIP-seq peaks by ChILT read counts 
 
 The model consists of
 
 * Response: existence of peaks (0: absent, 1: present)
-* Predictors: counts of bins around a TSS
+* Predictor: counts of bins around a TSS
 
 of all protein-coding genes.
 
@@ -71,7 +70,7 @@ reshape2::melt(R,value.name="correlation") %>%
 ```
 
 
-```{r regression}
+```{r regression, cache=TRUE}
 model <- glm((peak$V7>0)~Xb,family=binomial,control = list(maxit=100,trace = TRUE))
 xs <- G%*%Matrix::rowSums(X)
 plot(seq(-5000,5000,len=100),coef(model)[-1],type="h",lwd=4,pch=20,
@@ -80,7 +79,7 @@ lines(seq(-5000,5000),xs/max(xs)*max(coef(model)[-1]),lwd=2)
 abline(h=0,v=0,lty=2)
 ```
 
-### Performances of each bin-size
+### Performance of each bin-size
 
 ```{r ROC, fig.width=6,fig.height=4}
 pdata <- cbind(

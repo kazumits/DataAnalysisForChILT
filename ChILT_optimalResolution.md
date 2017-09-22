@@ -1,6 +1,6 @@
-# Optimal resolution of ChILT
+# Optimal resolution for ChILT
 
-*by determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction*
+*determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction*
 
 ### Setup
 
@@ -58,19 +58,19 @@ X <- fread("zcat < data/aggrTSS_H3K4me3-1_5cnt.txt.gz") %>%
 ## 
 Read 0.0% of 10001 rows
 Read 100.0% of 10001 rows
-Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:17
+Read 10001 rows and 27052 (of 27052) columns from 1.008 GB file in 00:00:19
 ```
 
 ```r
 peak <- fread("zcat < data/ensembl_grcm38_refseqNM_uniqENST_coding_eH3K4me3PeakCountTSSwithin1000.txt.gz")
 ```
 
-### Predict ChIP-seq peaks by ChILT signal count (bins at TSSs)
+### Predicting ChIP-seq peaks by ChILT read counts 
 
 The model consists of
 
 * Response: existence of peaks (0: absent, 1: present)
-* Predictors: counts of bins around a TSS
+* Predictor: counts of bins around a TSS
 
 of all protein-coding genes.
 
@@ -129,7 +129,7 @@ abline(h=0,v=0,lty=2)
 
 ![](ChILT_optimalResolution_files/figure-html/regression-1.png)<!-- -->
 
-### Performances of each bin-size
+### Performance of each bin-size
 
 
 ```r

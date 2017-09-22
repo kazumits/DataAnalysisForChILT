@@ -9,6 +9,10 @@ outpu:
     keep_tex: yes
     latex_engine: lualatex
   html_notebook: default
+output: 
+  html_document: 
+    keep_md: yes
+    self_contained: no
 ---
 
 *determining the effective range ChILT-H3K4me3(#3) for ChIP-seq peak prediction*

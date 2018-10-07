@@ -1,4 +1,4 @@
-# Data Analysis for ChIL
+# Data Analysis for ChIL-seq
 
 This repository is *self-contained* (both codes and data are included).
 
